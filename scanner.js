@@ -73,7 +73,7 @@ async function scanDirectory(directoryPath = ".", depth = 0) {
 // Executes a command in the shell and returns the result
 async function execCommand(command) {
   return new Promise((resolve, reject) => {
-    exec(command, (error, stdout, stderr) => {
+    exec(command, { maxBuffer: 1024 * 1024 * 1024 }, (error, stdout, stderr) => {
       if (error) {
         reject(error);
         return;
