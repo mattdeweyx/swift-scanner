@@ -63,19 +63,15 @@ async function update(fileName) {
       filesScanned++;
       totalComponentsFound += Object.values(components).reduce((total, current) => total + current.length, 0);
       
-      // Clear multiple lines from the console
-      clearLines(4); // Adjust the number of lines to clear as needed
+      clearLines(4);
   
-      // Write the updated information
       process.stdout.write(`\nCurrent Path     : ${currentPath}\nFiles scanned    : ${filesScanned}\nComponents found : ${totalComponentsFound}`);
     } catch (error) {
       console.error(`Error updating components from ${fileName}:`, error.message);
     } finally {
     }
   }
-
   
-  // Function to clear multiple lines
   const clearLines = (n) => {
     for (let i = 0; i < n; i++) {
       const y = i === 0 ? null : -1;
@@ -85,14 +81,13 @@ async function update(fileName) {
   }
   
 
-// Recursively scans a directory for Swift files
 async function scanDirectory(directoryPath = ".", depth = 0) {
   try {
     if (!depth) {
       console.log('Scanning directories:\n\n');
       depth++;
     }
-    currentPath = directoryPath; // Update the current path
+    currentPath = directoryPath;
     const files = await fs.readdir(directoryPath);
     for (const file of files) {
       const filePath = path.join(directoryPath, file);
