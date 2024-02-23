@@ -3,154 +3,161 @@ const path = require('path');
 const { exec } = require('child_process');
 const { table } = require('./nstable');
 
+
 // Store all scanned components
 let allComponents = {};
-
-// Store the total number of files to scan
-let totalFilesToScan = 0;
 
 // Store the number of files scanned
 let filesScanned = 0;
 
-// Update progress bar
-function updateProgressBar() {
-    const progress = (filesScanned / totalFilesToScan) * 100;
-    process.stdout.clearLine();
-    process.stdout.cursorTo(0);
-    process.stdout.write(`Progress: ${progress.toFixed(2)}%`);
-  }
+// Store the total number of components found
+let totalComponentsFound = 0;
+
+// Store the current path
+let currentPath = './';
 
 // Extracts public components from a Swift file
 async function extractPublicComponents(filePath) {
-  try {
+  return new Promise((resolve, reject) => {
     const command = `sourcekitten structure --file "${filePath}"`;
-    const { stdout, stderr } = await execCommand(command);
-    if (stderr) {
-      throw new Error(`Command error: ${stderr}`);
-    }
-    const jsonData = JSON.parse(stdout);
-    const components = {};
-    if (jsonData['key.substructure']) {
-      jsonData['key.substructure'].forEach(component => {
-        if (component['key.accessibility'] === 'source.lang.swift.accessibility.public') {
-          const kind = component['key.kind'];
-          const name = component['key.name'];
-          if (!components[kind]) {
-            components[kind] = [];
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        reject(`Error executing command: ${error.message}`);
+        return;
+      }
+      if (stderr) {
+        reject(`Command error: ${stderr}`);
+        return;
+      }
+      let jsonData;
+      try {
+        jsonData = JSON.parse(stdout);
+      } catch (parseError) {
+        reject(`Error parsing JSON: ${parseError}`);
+        return;
+      }
+      const components = {};
+      if (jsonData['key.substructure']) {
+        jsonData['key.substructure'].forEach(component => {
+          if (component['key.accessibility'] === 'source.lang.swift.accessibility.public') {
+            // Extract the last part of the component type
+            let typeParts = component['key.kind'];
+            let componentType = typeParts.replace('source.lang.swift.decl.', '');
+            const name = component['key.name'];
+            const path = filePath; // Path to the file
+            if (!components[componentType]) {
+              components[componentType] = [];
+            }
+            components[componentType].push({ name, path }); // Push an object with name and path
           }
-          components[kind].push({ name, path: filePath });
-        }
-      });
-    }
-    return components;
-  } catch (error) {
-    throw new Error(`Error extracting public components from ${filePath}: ${error.message}`);
-  }
+        });
+      }
+      resolve(components);
+    });
+  });
 }
 
 // Updates the list of components with those found in a file
 async function update(fileName) {
     try {
-      await extractPublicComponents(fileName);
+        
+      if (filesScanned<5) {
+        process.stdout.cursorTo(0);
+      }
+      const components = await extractPublicComponents(fileName);
+      Object.keys(components).forEach(kind => {
+        allComponents[kind] = allComponents[kind] ? allComponents[kind].concat(components[kind]) : components[kind];
+      });
       filesScanned++;
-      updateProgressBar();
+      totalComponentsFound += Object.values(components).reduce((total, current) => total + current.length, 0);
+      
+      // Clear multiple lines from the console
+      clearLines(4); // Adjust the number of lines to clear as needed
+  
+      // Write the updated information
+      process.stdout.write(`\nCurrent Path     : ${currentPath}\nFiles scanned    : ${filesScanned}\nComponents found : ${totalComponentsFound}`);
+      
+      await new Promise(resolve => setTimeout(resolve, 100)); // Add a delay of 100 milliseconds
     } catch (error) {
       console.error(`Error updating components from ${fileName}:`, error.message);
+    } finally {
     }
   }
   
-// Recursively counts the number of Swift files in a directory
-async function countFiles(directoryPath = ".", depth = 0) {
-    try {
-      const files = await fs.readdir(directoryPath);
-      for (const file of files) {
-        const filePath = path.join(directoryPath, file);
-        const stats = await fs.stat(filePath);
-        if (stats.isDirectory()) {
-          await countFiles(filePath, depth + 1);
-        } else if (filePath.endsWith('.swift')) {
-          totalFilesToScan++;
-        }
-      }
-    } catch (error) {
-      console.error('Error counting files:', error.message);
+  // Function to clear multiple lines from the console
+  const clearLines = (n) => {
+    for (let i = 0; i < n; i++) {
+      // First clear the current line, then clear the previous line
+      const y = i === 0 ? null : -1;
+      process.stdout.moveCursor(0, y);
+      process.stdout.clearLine(1);
     }
   }
+  
 
-// Recursively scans a directory for Swift files
 // Recursively scans a directory for Swift files
 async function scanDirectory(directoryPath = ".", depth = 0) {
-    try {
-      if (depth === 0) {
-        console.log('Scanning directories:');
-      }
-      await countFiles(directoryPath); // Count files before scanning
-      console.log('Total files to scan:', totalFilesToScan);
-      const files = await fs.readdir(directoryPath);
-      for (const file of files) {
-        const filePath = path.join(directoryPath, file);
-        const stats = await fs.stat(filePath);
-        if (stats.isDirectory()) {
-          if (depth === 0) {
-            console.log("    ", filePath);
-          }
-          await scanDirectory(filePath, depth + 1);
-        } else if (filePath.endsWith('.swift')) {
-          await update(filePath);
-        }
-      }
-    } catch (error) {
-      console.error('Error scanning directory:', error.message);
+  try {
+    if (!depth) {
+      console.log('Scanning directories:\n\n');
+      depth++;
     }
-  }
-
-// Executes a command in the shell and returns the result
-async function execCommand(command) {
-  return new Promise((resolve, reject) => {
-    exec(command, { maxBuffer: 1024 * 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error) {
-        reject(error);
-        return;
+    currentPath = directoryPath; // Update the current path
+    const files = await fs.readdir(directoryPath);
+    for (const file of files) {
+      const filePath = path.join(directoryPath, file);
+      const stats = await fs.stat(filePath);
+      if (stats.isDirectory()) {
+        if (depth === 0) {
+          console.log("    ", filePath);
+        }
+        await scanDirectory(filePath, depth);
+      } else if (filePath.endsWith('.swift')) {
+        await update(filePath);
       }
-      resolve({ stdout, stderr });
-    });
-  });
+    }
+  } catch (error) {
+    console.error('Error scanning directory:', error.message);
+  }
 }
 
+// Main function orchestrating the scanning process
 async function main() {
-    try {
-      await scanDirectory();
-      console.log('Scanning completed successfully.');
-      const reportData = createReportData(allComponents);
-      await writeResults('results.json', allComponents);
-      await writeResults('report.json', reportData);
-      console.log('Report Table:\n');
-      console.log(table(reportData, Object.keys(reportData[0]), reportData[0][0]));
-    } catch (error) {
-      console.error('An error occurred during scanning:', error.message);
-    }
+  try {
+    await scanDirectory();
+    console.log('\nScanning completed successfully.');
+    const reportData = createReportData(allComponents);
+    await writeResults('results.json', allComponents);
+    await writeResults('report.json', reportData);
+    console.log('Report Table:\n');
+    const report = table(reportData, Object.keys(reportData[0]), "componentType");
+    console.log(report);
+    await fs.writeFile('report.txt', report);
+    console.log(`Results written to report.txt`);
+  } catch (error) {
+    console.error('An error occurred during scanning:', error.message);
   }
+}
 
-  // Converts the components data into a format suitable for reporting
+// Converts the components data into a format suitable for reporting
 function createReportData(allComponents) {
-    const reportData = [];
-    Object.keys(allComponents).forEach(kind => {
-      allComponents[kind].forEach(component => {
-        reportData.push({ componentType: kind, componentName: component.name });
-      });
+  const reportData = [];
+  Object.keys(allComponents).forEach(kind => {
+    allComponents[kind].forEach(component => {
+      reportData.push({ componentType: kind, componentName: component.name });
     });
-    return reportData;
+  });
+  return reportData;
+}
+
+// Writes data to a file 
+async function writeResults(filePath, data) {
+  try {
+    await fs.writeFile(filePath, JSON.stringify(data, null, 2));
+  } catch (error) {
+    console.error(`Error writing results to ${filePath}:`, error.message);
   }
-  
-  // Writes data to a file 
-  async function writeResults(filePath, data) {
-    try {
-      await fs.writeFile(filePath, JSON.stringify(data, null, 2));
-      console.log(`Results written to ${filePath}`);
-    } catch (error) {
-      console.error(`Error writing results to ${filePath}:`, error.message);
-    }
-  }
-  
-  // Start the scanning process
-  main();
+}
+
+// Start the scanning process
+main();
