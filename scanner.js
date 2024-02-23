@@ -6,6 +6,20 @@ const { table } = require('./nstable');
 // Store all scanned components
 let allComponents = {};
 
+// Store the total number of files to scan
+let totalFilesToScan = 0;
+
+// Store the number of files scanned
+let filesScanned = 0;
+
+// Update progress bar
+function updateProgressBar() {
+  const progress = (filesScanned / totalFilesToScan) * 100;
+  process.stdout.clearLine();
+  process.stdout.cursorTo(0);
+  process.stdout.write(`Progress: ${progress.toFixed(2)}%`);
+}
+
 // Extracts public components from a Swift file
 async function extractPublicComponents(filePath) {
   try {
@@ -36,15 +50,14 @@ async function extractPublicComponents(filePath) {
 
 // Updates the list of components with those found in a file
 async function update(fileName) {
-  try {
-    const components = await extractPublicComponents(fileName);
-    Object.keys(components).forEach(kind => {
-      allComponents[kind] = allComponents[kind] ? allComponents[kind].concat(components[kind]) : components[kind];
-    });
-  } catch (error) {
-    console.error(`Error updating components from ${fileName}:`, error.message);
+    try {
+      await extractPublicComponents(fileName);
+      filesScanned++;
+      updateProgressBar();
+    } catch (error) {
+      console.error(`Error updating components from ${fileName}:`, error.message);
+    }
   }
-}
 
 // Recursively scans a directory for Swift files
 async function scanDirectory(directoryPath = ".", depth = 0) {
@@ -85,18 +98,30 @@ async function execCommand(command) {
 
 // Main function orchestrating the scanning process
 async function main() {
-  try {
-    await scanDirectory();
-    await writeResults('results.json', allComponents);
-    const reportData = createReportData(allComponents);
-    await writeResults('report.json', reportData);
-    console.log('Scanning completed successfully.');
-    console.log('Report Table:\n');
-    console.log(table(reportData, Object.keys(reportData[0])));
-  } catch (error) {
-    console.error('An error occurred during scanning:', error.message);
+    try {
+      await scanDirectory();
+      // After scanning, set the total files to scan
+      console.log("\nTotal files scanned:", filesScanned);
+      console.log("Scanning completed successfully.");
+      const reportData = createReportData(allComponents);
+      await writeResults('results.json', allComponents);
+      await writeResults('report.json', reportData);
+      console.log('Report Table:\n');
+      console.log(table(reportData, Object.keys(reportData[0])));
+    } catch (error) {
+      console.error('An error occurred during scanning:', error.message);
+    }
   }
-}
+
+  // Main function orchestrating the scanning process
+async function main() {
+    try {
+      await scanDirectory();
+      console.log('Scanning completed successfully.');
+    } catch (error) {
+      console.error('An error occurred during scanning:', error.message);
+    }
+  }
 
 // Converts the components data into a format suitable for reporting
 function createReportData(allComponents) {
