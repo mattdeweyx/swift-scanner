@@ -14,11 +14,11 @@ let filesScanned = 0;
 
 // Update progress bar
 function updateProgressBar() {
-  const progress = (filesScanned / totalFilesToScan) * 100;
-  process.stdout.clearLine();
-  process.stdout.cursorTo(0);
-  process.stdout.write(`Progress: ${progress.toFixed(2)}%`);
-}
+    const progress = (filesScanned / totalFilesToScan) * 100;
+    process.stdout.clearLine();
+    process.stdout.cursorTo(0);
+    process.stdout.write(`Progress: ${progress.toFixed(2)}%`);
+  }
 
 // Extracts public components from a Swift file
 async function extractPublicComponents(filePath) {
@@ -58,30 +58,51 @@ async function update(fileName) {
       console.error(`Error updating components from ${fileName}:`, error.message);
     }
   }
+  
+// Recursively counts the number of Swift files in a directory
+async function countFiles(directoryPath = ".", depth = 0) {
+    try {
+      const files = await fs.readdir(directoryPath);
+      for (const file of files) {
+        const filePath = path.join(directoryPath, file);
+        const stats = await fs.stat(filePath);
+        if (stats.isDirectory()) {
+          await countFiles(filePath, depth + 1);
+        } else if (filePath.endsWith('.swift')) {
+          totalFilesToScan++;
+        }
+      }
+    } catch (error) {
+      console.error('Error counting files:', error.message);
+    }
+  }
 
 // Recursively scans a directory for Swift files
+// Recursively scans a directory for Swift files
 async function scanDirectory(directoryPath = ".", depth = 0) {
-  try {
-    if (depth === 0) {
-      console.log('Scanning directories:');
-    }
-    const files = await fs.readdir(directoryPath);
-    for (const file of files) {
-      const filePath = path.join(directoryPath, file);
-      const stats = await fs.stat(filePath);
-      if (stats.isDirectory()) {
-        if (depth === 0) {
-          console.log("    ", filePath);
-        }
-        await scanDirectory(filePath, depth + 1);
-      } else if (filePath.endsWith('.swift')) {
-        await update(filePath);
+    try {
+      if (depth === 0) {
+        console.log('Scanning directories:');
       }
+      await countFiles(directoryPath); // Count files before scanning
+      console.log('Total files to scan:', totalFilesToScan);
+      const files = await fs.readdir(directoryPath);
+      for (const file of files) {
+        const filePath = path.join(directoryPath, file);
+        const stats = await fs.stat(filePath);
+        if (stats.isDirectory()) {
+          if (depth === 0) {
+            console.log("    ", filePath);
+          }
+          await scanDirectory(filePath, depth + 1);
+        } else if (filePath.endsWith('.swift')) {
+          await update(filePath);
+        }
+      }
+    } catch (error) {
+      console.error('Error scanning directory:', error.message);
     }
-  } catch (error) {
-    console.error('Error scanning directory:', error.message);
   }
-}
 
 // Executes a command in the shell and returns the result
 async function execCommand(command) {
@@ -96,13 +117,10 @@ async function execCommand(command) {
   });
 }
 
-// Main function orchestrating the scanning process
 async function main() {
     try {
       await scanDirectory();
-      // After scanning, set the total files to scan
-      console.log("\nTotal files scanned:", filesScanned);
-      console.log("Scanning completed successfully.");
+      console.log('Scanning completed successfully.');
       const reportData = createReportData(allComponents);
       await writeResults('results.json', allComponents);
       await writeResults('report.json', reportData);
@@ -113,36 +131,26 @@ async function main() {
     }
   }
 
-  // Main function orchestrating the scanning process
-async function main() {
+  // Converts the components data into a format suitable for reporting
+function createReportData(allComponents) {
+    const reportData = [];
+    Object.keys(allComponents).forEach(kind => {
+      allComponents[kind].forEach(component => {
+        reportData.push({ componentType: kind, componentName: component.name });
+      });
+    });
+    return reportData;
+  }
+  
+  // Writes data to a file 
+  async function writeResults(filePath, data) {
     try {
-      await scanDirectory();
-      console.log('Scanning completed successfully.');
+      await fs.writeFile(filePath, JSON.stringify(data, null, 2));
+      console.log(`Results written to ${filePath}`);
     } catch (error) {
-      console.error('An error occurred during scanning:', error.message);
+      console.error(`Error writing results to ${filePath}:`, error.message);
     }
   }
-
-// Converts the components data into a format suitable for reporting
-function createReportData(allComponents) {
-  const reportData = [];
-  Object.keys(allComponents).forEach(kind => {
-    allComponents[kind].forEach(component => {
-      reportData.push({ componentType: kind, componentName: component.name });
-    });
-  });
-  return reportData;
-}
-
-// Writes data to a file 
-async function writeResults(filePath, data) {
-  try {
-    await fs.writeFile(filePath, JSON.stringify(data, null, 2));
-    console.log(`Results written to ${filePath}`);
-  } catch (error) {
-    console.error(`Error writing results to ${filePath}:`, error.message);
-  }
-}
-
-// Start the scanning process
-main();
+  
+  // Start the scanning process
+  main();
