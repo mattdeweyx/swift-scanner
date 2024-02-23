@@ -84,6 +84,7 @@ async function update(fileName) {
     }
   }
   
+  
   // Function to clear multiple lines from the console
   const clearLines = (n) => {
     for (let i = 0; i < n; i++) {
