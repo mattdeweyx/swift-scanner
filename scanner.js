@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 const fs = require('fs').promises;
 const path = require('path');
 const { exec } = require('child_process');
@@ -83,7 +85,7 @@ async function update(fileName) {
     } finally {
     }
   }
-  
+
   
   // Function to clear multiple lines from the console
   const clearLines = (n) => {
