@@ -109,7 +109,7 @@ function createReportData(allComponents) {
   return reportData;
 }
 
-// Writes data to a file
+// Writes data to a file 
 async function writeResults(filePath, data) {
   try {
     await fs.writeFile(filePath, JSON.stringify(data, null, 2));
