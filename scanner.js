@@ -125,7 +125,7 @@ async function main() {
       await writeResults('results.json', allComponents);
       await writeResults('report.json', reportData);
       console.log('Report Table:\n');
-      console.log(table(reportData, Object.keys(reportData[0])));
+      console.log(table(reportData, Object.keys(reportData[0]), reportData[0][0]));
     } catch (error) {
       console.error('An error occurred during scanning:', error.message);
     }
