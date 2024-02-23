@@ -6,19 +6,11 @@ const { exec } = require('child_process');
 const { table } = require('./nstable');
 
 
-// Store all scanned components
 let allComponents = {};
-
-// Store the number of files scanned
 let filesScanned = 0;
-
-// Store the total number of components found
 let totalComponentsFound = 0;
-
-// Store the current path
 let currentPath = './';
 
-// Extracts public components from a Swift file
 async function extractPublicComponents(filePath) {
   return new Promise((resolve, reject) => {
     const command = `sourcekitten structure --file "${filePath}"`;
@@ -42,15 +34,14 @@ async function extractPublicComponents(filePath) {
       if (jsonData['key.substructure']) {
         jsonData['key.substructure'].forEach(component => {
           if (component['key.accessibility'] === 'source.lang.swift.accessibility.public') {
-            // Extract the last part of the component type
             let typeParts = component['key.kind'];
             let componentType = typeParts.replace('source.lang.swift.decl.', '');
             const name = component['key.name'];
-            const path = filePath; // Path to the file
+            const path = filePath;
             if (!components[componentType]) {
               components[componentType] = [];
             }
-            components[componentType].push({ name, path }); // Push an object with name and path
+            components[componentType].push({ name, path });
           }
         });
       }
@@ -59,7 +50,6 @@ async function extractPublicComponents(filePath) {
   });
 }
 
-// Updates the list of components with those found in a file
 async function update(fileName) {
     try {
         
@@ -78,8 +68,6 @@ async function update(fileName) {
   
       // Write the updated information
       process.stdout.write(`\nCurrent Path     : ${currentPath}\nFiles scanned    : ${filesScanned}\nComponents found : ${totalComponentsFound}`);
-      
-      await new Promise(resolve => setTimeout(resolve, 100)); // Add a delay of 100 milliseconds
     } catch (error) {
       console.error(`Error updating components from ${fileName}:`, error.message);
     } finally {
@@ -87,10 +75,9 @@ async function update(fileName) {
   }
 
   
-  // Function to clear multiple lines from the console
+  // Function to clear multiple lines
   const clearLines = (n) => {
     for (let i = 0; i < n; i++) {
-      // First clear the current line, then clear the previous line
       const y = i === 0 ? null : -1;
       process.stdout.moveCursor(0, y);
       process.stdout.clearLine(1);
@@ -124,7 +111,6 @@ async function scanDirectory(directoryPath = ".", depth = 0) {
   }
 }
 
-// Main function orchestrating the scanning process
 async function main() {
   try {
     await scanDirectory();
@@ -153,7 +139,6 @@ function createReportData(allComponents) {
   return reportData;
 }
 
-// Writes data to a file 
 async function writeResults(filePath, data) {
   try {
     await fs.writeFile(filePath, JSON.stringify(data, null, 2));
@@ -162,5 +147,4 @@ async function writeResults(filePath, data) {
   }
 }
 
-// Start the scanning process
 main();
