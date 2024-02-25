@@ -32,22 +32,22 @@ async function getModuleNames(filePath) {
 
 function getModuleNamesFromPodfile(content) {
     const regex = /pod\s+['"](.+)['"]/g;
-    const moduleNames = new Set(); // Use a Set to store unique module names
+    const moduleNames = new Set();
     let match;
     while (match = regex.exec(content)) {
         moduleNames.add(match[1]);
     }
-    return Array.from(moduleNames); // Convert Set to array before returning
+    return Array.from(moduleNames);
 }
 
 function getModuleNamesFromPackageSwift(content) {
     const regex = /name:\s*['"](.+?)['"]/g;
-    const moduleNames = new Set(); // Use a Set to store unique module names
+    const moduleNames = new Set();
     let match;
     while (match = regex.exec(content)) {
         moduleNames.add(match[1]);
     }
-    return Array.from(moduleNames); // Convert Set to array before returning
+    return Array.from(moduleNames);
 }
 
 async function scanModuleDirectories(moduleName) {
@@ -91,7 +91,7 @@ function processComponents(jsonData, filePath) {
                 const overriddenComponents = {};
                 const designSystems = [];
                 const designDocs = [];
-                const isSelfDeclared = true; // You can modify this based on your logic
+                const isSelfDeclared = true;
                 const filewiseOccurences = { [filePath]: 1 }; // Example: {"src/components/BrandCard/BrandCard.tsx": 1}
                 const totalOccurences = 1;
                 const stories = [];
