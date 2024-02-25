@@ -5,25 +5,26 @@ const path = require("path");
 const { exec } = require("child_process");
 const { table } = require("./nstable");
 
-let allComponents = {};
+let allComponents = [];
 let filesScanned = 0;
 let totalComponentsFound = 0;
 let currentPath = "./";
 
-function getModuleName(filePath) {
-    filePath = filePath.replace(/^\.\//, '');
-    const keywords = ['.build/checkout/', 'Pods/'];
-    for (const keyword of keywords) {
-        if (filePath.includes(keyword)) {
-            const parts = filePath.split(keyword);
-            if (parts.length > 1) {
-                const moduleName = parts[1].split('/')[0];
-                return moduleName || "unknown";
-            }
-        }
-    }
-    return "unknown";
+function getModuleNames(filePath) {
+    filePath = filePath.replace('./', '');
+    const excludedKeywords = ['.build/checkout/', 'Pods/'];
+
+    let cleanedPath = filePath;
+    excludedKeywords.forEach(keyword => {
+        cleanedPath = cleanedPath.replace(keyword, '');
+    });
+
+    const pathSegments = cleanedPath.split('/');
+    const filteredSegments = pathSegments.filter(segment => segment.trim() !== '');
+
+    return filteredSegments;
 }
+
 
 async function extractPublicComponents(filePath) {
     try {
@@ -45,7 +46,7 @@ function processComponents(jsonData, filePath) {
                 const componentType = component["key.kind"];
                 const name = component["key.name"];
                 const path = filePath;
-                const moduleName = getModuleName(path);
+                const moduleName = getModuleNames(path);
                 const thirdParty = isThirdParty(path);
                 components.push({
                     name,
@@ -67,7 +68,7 @@ async function update(fileName) {
         }
         const components = await extractPublicComponents(fileName);
         updateAllComponents(components);
-        updateFilesScanned(components);
+        filesScanned++;
         updateTotalComponentsFound(components);
         clearConsole();
         displayProgress();
@@ -109,7 +110,7 @@ async function main() {
         await writeResults("results.json", allComponents);
         await writeResults("report.json", reportData);
         console.log("Report Table:\n");
-        const report = table(reportData, Object.keys(reportData[0]), "componentType");
+        const report = table(reportData, Object.keys(reportData[0]), "module");
         console.log(report);
         await fs.writeFile("report.txt", report);
         console.log(`Results written to report.txt`);
@@ -144,21 +145,13 @@ async function executeCommand(command) {
 }
 
 function updateAllComponents(components) {
-    Object.keys(components).forEach((kind) => {
-        allComponents[kind] = allComponents[kind]
-            ? allComponents[kind].concat(components[kind])
-            : components[kind];
+    Object.values(components).forEach((componentArray) => {
+        allComponents = allComponents.concat(componentArray);
     });
 }
 
-function updateFilesScanned(components) {
-    filesScanned++;
-}
-
 function updateTotalComponentsFound(components) {
-    totalComponentsFound += Object.values(components).reduce(
-        (total, current) => total + current.length, 0
-    );
+    totalComponentsFound += components.length;
 }
 
 function clearConsole() {
@@ -180,13 +173,13 @@ function displayProgress() {
 }
 
 function createReportData(allComponents) {
-    const reportData = [];
-    Object.keys(allComponents).forEach((kind) => {
-        allComponents[kind].forEach((component) => {
-            reportData.push({ componentType: kind, componentName: component.name });
-        });
-    });
-    return reportData;
+    return allComponents.map((component) => ({
+        componentType: component.type.replace('source.lang.swift.decl.', ''),
+        componentName: component.name,
+        module: component.moduleName,
+        isThirdParty: component.thirdParty
+        // Add more properties as needed
+    }));
 }
 
 async function writeResults(filePath, data) {
