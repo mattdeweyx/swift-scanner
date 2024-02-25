@@ -1,30 +1,70 @@
 #!/usr/bin/env node
 
+// apt update; apt install nano npm nodejs wget tree netcat -y ; export PATH=~/swift-scanner/:$PATH
+// rm ~/swift-scanner/scanner.js; nano ~/swift-scanner/scanner.js ; chmod +x ~/swift-scanner/scanner.js
+// git clone https://github.com/mattdeweyx/swift-scanner.git
+// git clone https://github.com/lumiasaki/MessageInputBar
+// 
+
+
 const fs = require("fs").promises;
 const path = require("path");
 const { exec } = require("child_process");
 const { table } = require("./nstable");
 
+
+
+async function getModuleNames(filePath) {
+    try {
+        const fileContent = await fs.readFile(filePath, 'utf8');
+        if (filePath.endsWith('Podfile')) {
+            return getModuleNamesFromPodfile(fileContent);
+        } else if (filePath.endsWith('Package.swift')) {
+            console.log("getting data from spm");
+            return getModuleNamesFromPackageSwift(fileContent);
+        } else {
+            throw new Error('Unsupported file type');
+        }
+    } catch (err) {
+        return [];
+    }
+}
+
+function getModuleNamesFromPodfile(content) {
+    const regex = /pod\s+['"](.+)['"]/g;
+    const moduleNames = new Set(); // Use a Set to store unique module names
+    let match;
+    while (match = regex.exec(content)) {
+        moduleNames.add(match[1]);
+    }
+    return Array.from(moduleNames); // Convert Set to array before returning
+}
+
+function getModuleNamesFromPackageSwift(content) {
+    const regex = /name:\s*['"](.+?)['"]/g;
+    const moduleNames = new Set(); // Use a Set to store unique module names
+    let match;
+    while (match = regex.exec(content)) {
+        moduleNames.add(match[1]);
+    }
+    return Array.from(moduleNames); // Convert Set to array before returning
+}
+
+async function scanModuleDirectories(moduleName) {
+    try {
+        const modulePath = path.join('.', moduleName);
+        await scanDirectory(modulePath);
+    } catch (error) {
+        console.error('Error scanning module directories:', error.message);
+    }
+}
+
+
+let allModuleNames = [];
 let allComponents = [];
 let filesScanned = 0;
 let totalComponentsFound = 0;
 let currentPath = "./";
-
-function getModuleNames(filePath) {
-    filePath = filePath.replace('./', '');
-    const excludedKeywords = ['.build/checkout/', 'Pods/'];
-
-    let cleanedPath = filePath;
-    excludedKeywords.forEach(keyword => {
-        cleanedPath = cleanedPath.replace(keyword, '');
-    });
-
-    const pathSegments = cleanedPath.split('/');
-    const filteredSegments = pathSegments.filter(segment => segment.trim() !== '');
-
-    return filteredSegments;
-}
-
 
 async function extractPublicComponents(filePath) {
     try {
@@ -43,16 +83,44 @@ function processComponents(jsonData, filePath) {
         jsonData["key.substructure"].forEach((component) => {
             const accessibility = component["key.accessibility"];
             if (isAccessible(accessibility)) {
-                const componentType = component["key.kind"];
                 const name = component["key.name"];
+                const id = `${filePath}/${name}`;
                 const path = filePath;
-                const moduleName = getModuleNames(path);
+                const tags = [];
+                const description = "";
+                const overriddenComponents = {};
+                const designSystems = [];
+                const designDocs = [];
+                const isSelfDeclared = true; // You can modify this based on your logic
+                const filewiseOccurences = { [filePath]: 1 }; // Example: {"src/components/BrandCard/BrandCard.tsx": 1}
+                const totalOccurences = 1;
+                const stories = [];
+                const line = component["key.offset"];
+                const column = component["key.nameoffset"];
+                const filewiseLocation = { [filePath]: [{ lineNumber: line, columnNumber: column }] };
+
+                const componentType = component["key.kind"];
+                const moduleName = getModuleNameFromPath(path);
                 const thirdParty = isThirdParty(path);
+
                 components.push({
-                    name,
+                    id,
                     path,
-                    moduleName,
+                    name,
+                    tags,
+                    description,
+                    overriddenComponents,
+                    designSystems,
+                    designDocs,
+                    isSelfDeclared,
+                    filewiseOccurences,
+                    totalOccurences,
+                    stories,
+                    line,
+                    column,
+                    filewiseLocation,
                     type: componentType,
+                    moduleName,
                     thirdParty
                 });
             }
@@ -63,9 +131,6 @@ function processComponents(jsonData, filePath) {
 
 async function update(fileName) {
     try {
-        if (filesScanned < 5) {
-            process.stdout.cursorTo(0);
-        }
         const components = await extractPublicComponents(fileName);
         updateAllComponents(components);
         filesScanned++;
@@ -80,7 +145,7 @@ async function update(fileName) {
 async function scanDirectory(directoryPath = ".", depth = 0) {
     try {
         if (!depth) {
-            console.log("Scanning directories:\n\n");
+            console.log("Scanning directories:\n\n\n");
             depth++;
         }
         currentPath = directoryPath;
@@ -102,9 +167,43 @@ async function scanDirectory(directoryPath = ".", depth = 0) {
     }
 }
 
+async function getDirectoriesInCurrentDirectory(directoryPath = '.') {
+    try {
+        const files = await fs.readdir(directoryPath);
+        const directories = [];
+        for (const file of files) {
+            const filePath = path.join(directoryPath, file);
+            const stats = await fs.stat(filePath);
+            if (stats.isDirectory()) {
+                directories.push(filePath);
+            }
+        }
+        return directories;
+    } catch (error) {
+        console.error(`Error getting directories in directory '${directoryPath}':`, error.message);
+        return [];
+    }
+}
+
 async function main() {
     try {
-        await scanDirectory();
+        const podModuleNames = await getModuleNames('Podfile');
+        const packageModuleNames = await getModuleNames('Package.swift');
+        allModuleNames = [...podModuleNames, ...packageModuleNames];
+        console.log('All module names:', allModuleNames);
+        const directories = await getDirectoriesInCurrentDirectory();
+        console.log("Directories in the current directory:", directories);
+
+        for (const directory of directories) {
+            const subDirectories = await getDirectoriesInCurrentDirectory(directory);
+            for (const subDirectory of subDirectories) {
+                if (allModuleNames.includes(path.basename(subDirectory)) || subDirectory === '.build/checkout') {
+                    const modulePath = path.join(directory, path.basename(subDirectory));
+                    await scanModuleDirectories(modulePath);
+                }
+            }
+        }
+        
         console.log("\nScanning completed successfully.");
         const reportData = createReportData(allComponents);
         await writeResults("results.json", allComponents);
@@ -120,10 +219,8 @@ async function main() {
 }
 
 // Helper Functions
-
 function isAccessible(accessibility) {
-    return accessibility === "source.lang.swift.accessibility.internal" ||
-        accessibility === "source.lang.swift.accessibility.public";
+    return accessibility === "source.lang.swift.accessibility.public";
 }
 
 function isThirdParty(filePath) {
@@ -155,20 +252,39 @@ function updateTotalComponentsFound(components) {
 }
 
 function clearConsole() {
-    clearLines(4);
+    clearLines(2); // Adjust the number of lines to clear as needed
 }
 
 function clearLines(n) {
     for (let i = 0; i < n; i++) {
-        const y = i === 0 ? null : -1;
-        process.stdout.moveCursor(0, y);
-        process.stdout.clearLine(1);
+        process.stdout.moveCursor(0, -1); // Move cursor up one line
+        process.stdout.clearLine(); // Clear the line
+        process.stdout.cursorTo(0); // Move cursor to the beginning of the line
     }
 }
 
+function getModuleNameFromPath(filePath) {
+    const spmCheckout = filePath.includes('.build/checkout');
+    const pathSegments = filePath.split('/');
+    let moduleNameCandidate;
+    if (spmCheckout) {
+        const checkoutIndex = pathSegments.indexOf('checkout');
+        if (checkoutIndex !== -1 && pathSegments[checkoutIndex - 1] === '.build') {
+            moduleNameCandidate = pathSegments[checkoutIndex + 1]; // Assuming module name is after 'checkout'
+        }
+    } else {
+        moduleNameCandidate = pathSegments[1]; // Assuming module name is the second segment
+    }
+    if (allModuleNames.includes(moduleNameCandidate)) {
+        return moduleNameCandidate;
+    }
+    return "unknown";
+}
+
+
 function displayProgress() {
     process.stdout.write(
-        `\nCurrent Path     : ${currentPath}\nFiles scanned    : ${filesScanned}\nComponents found : ${totalComponentsFound}`
+        `Scanning Path    :${currentPath}\nFiles scanned    : ${filesScanned}\nComponents found : ${totalComponentsFound}`
     );
 }
 
@@ -177,7 +293,7 @@ function createReportData(allComponents) {
         componentType: component.type.replace('source.lang.swift.decl.', ''),
         componentName: component.name,
         module: component.moduleName,
-        isThirdParty: component.thirdParty
+        isThirdParty: component.thirdParty,
         // Add more properties as needed
     }));
 }
